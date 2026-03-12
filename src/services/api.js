@@ -329,3 +329,113 @@ export const dashboardService = {
     return apiCall('/dashboard/sales-trend');
   },
 };
+
+// ==================== ENGINEERING ====================
+export const engineeringService = {
+  async generateEngineeringToken(meterNo, tokenType, parameters = {}) {
+    return apiCall('/engineering/engineering-token', {
+      method: 'POST',
+      body: JSON.stringify({ meterNo, tokenType, parameters }),
+    });
+  },
+  async generateFreeUnits(meterNo, kwh, reason) {
+    return apiCall('/engineering/free-units', {
+      method: 'POST',
+      body: JSON.stringify({ meterNo, kwh, reason }),
+    });
+  },
+  async generateKeyChangeToken(meterNo, newKeyRevision) {
+    return apiCall('/engineering/key-change', {
+      method: 'POST',
+      body: JSON.stringify({ meterNo, newKeyRevision }),
+    });
+  },
+  async generateReplacementToken(originalReference) {
+    return apiCall('/engineering/replacement-token', {
+      method: 'POST',
+      body: JSON.stringify({ originalReference }),
+    });
+  },
+};
+
+// ==================== BATCHES ====================
+export const batchService = {
+  async openSalesBatch(vendorId, notes) {
+    return apiCall('/batches/sales', { method: 'POST', body: JSON.stringify({ vendorId, notes }) });
+  },
+  async closeSalesBatch(batchId) {
+    return apiCall(`/batches/sales/${batchId}/close`, { method: 'PUT' });
+  },
+  async getSalesBatches(filters = {}) {
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/batches/sales${params ? '?' + params : ''}`);
+  },
+  async getSalesBatchDetail(batchId) {
+    return apiCall(`/batches/sales/${batchId}`);
+  },
+  async openBankingBatch(salesBatchId, bankReference) {
+    return apiCall('/batches/banking', { method: 'POST', body: JSON.stringify({ salesBatchId, bankReference }) });
+  },
+  async getBankingBatches(filters = {}) {
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/batches/banking${params ? '?' + params : ''}`);
+  },
+};
+
+// ==================== COMMISSIONS ====================
+export const commissionService = {
+  async calculate(vendorId, dateFrom, dateTo) {
+    return apiCall('/commissions/calculate', { method: 'POST', body: JSON.stringify({ vendorId, dateFrom, dateTo }) });
+  },
+  async getAll(filters = {}) {
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/commissions${params ? '?' + params : ''}`);
+  },
+  async getSummary() {
+    return apiCall('/commissions/summary');
+  },
+  async approve(id) {
+    return apiCall(`/commissions/${id}/approve`, { method: 'PUT' });
+  },
+  async markPaid(id) {
+    return apiCall(`/commissions/${id}/paid`, { method: 'PUT' });
+  },
+};
+
+// ==================== MAP ====================
+export const mapService = {
+  async getMeterLocations(filters = {}) {
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/map/meters${params ? '?' + params : ''}`);
+  },
+  async getMeterDetail(meterNo) {
+    return apiCall(`/map/meters/${meterNo}`);
+  },
+  async getAreaSummary() {
+    return apiCall('/map/areas');
+  },
+};
+
+// ==================== NOTIFICATIONS ====================
+export const notificationService = {
+  async getHistory(filters = {}) {
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/notifications${params ? '?' + params : ''}`);
+  },
+  async sendSMS(phone, message) {
+    return apiCall('/notifications/sms', { method: 'POST', body: JSON.stringify({ phone, message }) });
+  },
+  async sendTokenSMS(transactionId) {
+    return apiCall(`/notifications/token-sms/${transactionId}`, { method: 'POST' });
+  },
+};
+
+// ==================== RECEIPTS ====================
+export const receiptService = {
+  async viewReceipt(transactionRef) {
+    window.open(`${API_BASE}/receipts/${transactionRef}`, '_blank');
+  },
+  async downloadReceipt(transactionRef) {
+    window.open(`${API_BASE}/receipts/${transactionRef}/download`, '_blank');
+  },
+};

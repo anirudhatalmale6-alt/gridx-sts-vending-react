@@ -10,6 +10,9 @@ import Vendors from './pages/Vendors';
 import Tariffs from './pages/Tariffs';
 import Reports from './pages/Reports';
 import Admin from './pages/Admin';
+import Engineering from './pages/Engineering';
+import Batches from './pages/Batches';
+import Map from './pages/Map';
 
 function App() {
   const { isAuthenticated } = useAuth();
@@ -29,6 +32,9 @@ function App() {
         <Route path="/tariffs" element={<Tariffs />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/engineering" element={<Engineering />} />
+        <Route path="/batches" element={<Batches />} />
+        <Route path="/map" element={<Map />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>
