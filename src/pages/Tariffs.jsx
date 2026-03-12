@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Gauge, Plus, Save, History } from 'lucide-react';
-import { tariffGroups, systemConfig } from '../data/mockData';
+import { tariffService } from '../services/api';
 
 const blockColors = {
   R1: ['#0d9488', '#2563eb', '#7c3aed'],
@@ -16,7 +16,25 @@ const tariffLog = [
 ];
 
 export default function Tariffs() {
-  const [cfg, setCfg] = useState({ ...systemConfig });
+  const [tariffGroups, setTariffGroups] = useState([]);
+  const [sysConfig, setSysConfig] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [cfg, setCfg] = useState({});
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      tariffService.getAll(),
+      tariffService.getConfig(),
+    ])
+      .then(([tariffRes, configRes]) => {
+        setTariffGroups(tariffRes.data);
+        setSysConfig(configRes.data);
+        setCfg({ ...configRes.data });
+      })
+      .catch(err => console.error('Failed to load tariff data:', err))
+      .finally(() => setLoading(false));
+  }, []);
 
   const handleChange = (field, value) => setCfg((prev) => ({ ...prev, [field]: value }));
 

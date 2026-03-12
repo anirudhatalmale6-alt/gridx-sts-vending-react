@@ -5,7 +5,6 @@ import {
 } from 'recharts';
 import { Zap, TrendingUp, TrendingDown, Activity } from 'lucide-react';
 import { dashboardService } from '../services/api';
-import { recentTransactions, dashboardKPIs } from '../data/mockData';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -109,8 +108,8 @@ function SystemStatusItem({ label, status, detail }) {
 export default function Dashboard() {
   const navigate = useNavigate();
 
-  const [kpis, setKpis] = useState(null);
-  const [trend, setTrend] = useState([]);
+  const [kpis, setKpis] = useState({ todaySales: 0, tokensGenerated: 0, activeMeters: 0, monthlyRevenue: 0 });
+  const [salesTrend, setSalesTrend] = useState([]);
   const [systemStatus, setSystemStatus] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -119,23 +118,20 @@ export default function Dashboard() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [kpiData, trendData, statusData] = await Promise.all([
+      const [kpiData, trendData, txnData, statusData] = await Promise.all([
         dashboardService.getKPIs(),
         dashboardService.getSalesTrend(),
+        dashboardService.getRecentTransactions(10),
         dashboardService.getSystemStatus
           ? dashboardService.getSystemStatus()
           : Promise.resolve(defaultSystemStatus),
       ]);
       setKpis(kpiData);
-      setTrend(trendData);
+      setSalesTrend(trendData);
+      setTransactions(txnData);
       setSystemStatus(statusData ?? defaultSystemStatus);
-      setTransactions(recentTransactions.slice(0, 10));
     } catch (err) {
-      // Fallback to mock data on error
-      setKpis(dashboardKPIs);
-      setTrend(fallbackTrend);
-      setSystemStatus(defaultSystemStatus);
-      setTransactions(recentTransactions.slice(0, 10));
+      console.error('Dashboard data fetch error:', err);
     } finally {
       setLoading(false);
     }
@@ -146,7 +142,7 @@ export default function Dashboard() {
   }, [loadData]);
 
   // Derive chart-safe trend: use `amount` from api or `amount` field
-  const chartData = trend.map((item) => ({
+  const chartData = salesTrend.map((item) => ({
     day: item.day,
     amount: item.amount ?? item.sales ?? 0,
   }));
@@ -185,36 +181,36 @@ export default function Dashboard() {
       <div className="kpi-grid">
         <KpiCard
           title="Today's Sales"
-          value={kpis ? fmtNAD(kpis.todaySales ?? kpis.todaySales) : '—'}
-          delta={kpis?.todaySalesDelta ?? 12.4}
-          deltaLabel={`${kpis?.todaySalesDelta ?? 12.4}% vs yesterday`}
+          value={fmtNAD(kpis.todaySales)}
+          delta={kpis.todaySalesDelta ?? 0}
+          deltaLabel={`${kpis.todaySalesDelta ?? 0}% vs yesterday`}
           borderColor="#00b4d8"
           icon={TrendingUp}
           loading={loading}
         />
         <KpiCard
           title="Tokens Generated Today"
-          value={kpis ? fmtNum(kpis.tokensGenerated) : '—'}
-          delta={kpis?.tokensDelta ?? 31}
-          deltaLabel={`${kpis?.tokensDelta ?? 31} more than yesterday`}
+          value={fmtNum(kpis.tokensGenerated)}
+          delta={kpis.tokensDelta ?? 0}
+          deltaLabel={`${kpis.tokensDelta ?? 0} more than yesterday`}
           borderColor="#3b82f6"
           icon={Zap}
           loading={loading}
         />
         <KpiCard
           title="Active Meters"
-          value={kpis ? fmtNum(kpis.activeMeters) : '—'}
-          delta={kpis?.metersDelta ?? 16}
-          deltaLabel={`${kpis?.metersDelta ?? 16} new this month`}
+          value={fmtNum(kpis.activeMeters)}
+          delta={kpis.metersDelta ?? 0}
+          deltaLabel={`${kpis.metersDelta ?? 0} new this month`}
           borderColor="#22c55e"
           icon={Activity}
           loading={loading}
         />
         <KpiCard
           title="Revenue This Month"
-          value={kpis ? fmtNAD(kpis.monthlyRevenue) : '—'}
-          delta={kpis?.monthlyRevenueDelta ?? 8.7}
-          deltaLabel={`${kpis?.monthlyRevenueDelta ?? 8.7}% vs last month`}
+          value={fmtNAD(kpis.monthlyRevenue)}
+          delta={kpis.monthlyRevenueDelta ?? 0}
+          deltaLabel={`${kpis.monthlyRevenueDelta ?? 0}% vs last month`}
           borderColor="#f59e0b"
           icon={TrendingUp}
           loading={loading}
@@ -423,12 +419,3 @@ const defaultSystemStatus = [
   { label: 'SMS Gateway',        status: 'Active',    detail: 'MTC Namibia — 0 failed' },
 ];
 
-const fallbackTrend = [
-  { day: 'Thu', amount: 14200 },
-  { day: 'Fri', amount: 16800 },
-  { day: 'Sat', amount:  9400 },
-  { day: 'Sun', amount:  7200 },
-  { day: 'Mon', amount: 15600 },
-  { day: 'Tue', amount: 17400 },
-  { day: 'Today', amount: 18742 },
-];

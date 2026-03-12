@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { recentTransactions } from '../data/mockData';
+import { useState, useMemo, useEffect } from 'react';
+import { transactionService } from '../services/api';
 import { Search, Filter, Download, FileText, Printer, RotateCcw } from 'lucide-react';
 
 const TYPES    = ['All', 'Vend', 'Reversal', 'Free Token', 'Engineering'];
@@ -23,6 +23,9 @@ function truncateToken(token) {
 }
 
 export default function Transactions() {
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [total, setTotal] = useState(0);
   const [dateFrom, setDateFrom] = useState('2026-03-01');
   const [dateTo, setDateTo]     = useState('2026-03-12');
   const [searchQuery, setSearchQuery]   = useState('');
@@ -51,8 +54,19 @@ export default function Transactions() {
     });
   };
 
+  useEffect(() => {
+    setLoading(true);
+    transactionService.getAll(appliedFilters)
+      .then(res => {
+        setTransactions(res.data);
+        setTotal(res.total);
+      })
+      .catch(err => console.error('Failed to load transactions:', err))
+      .finally(() => setLoading(false));
+  }, [appliedFilters]);
+
   const filtered = useMemo(() => {
-    return recentTransactions.filter(tx => {
+    return transactions.filter(tx => {
       const matchSearch = !appliedFilters.search ||
         tx.customer.toLowerCase().includes(appliedFilters.search.toLowerCase()) ||
         tx.meterNo.includes(appliedFilters.search) ||
@@ -63,7 +77,7 @@ export default function Transactions() {
       const matchDate = txDate >= appliedFilters.dateFrom && txDate <= appliedFilters.dateTo;
       return matchSearch && matchType && matchStatus && matchDate;
     });
-  }, [appliedFilters]);
+  }, [appliedFilters, transactions]);
 
   const handleReprint = (tx) => {
     // In production this would call a printer service
@@ -78,20 +92,16 @@ export default function Transactions() {
   };
 
   const handleExportCSV = () => {
-    const header = ['Date', 'Time', 'Reference', 'Customer', 'Meter No', 'Amount N$', 'kWh', 'Token', 'Operator', 'Status', 'Type'];
-    const rows = filtered.map(tx => [
-      tx.date, tx.time, tx.id, tx.customer, tx.meterNo,
-      tx.amount.toFixed(2), tx.kwh.toFixed(1), tx.token,
-      tx.operator, tx.status, tx.type,
-    ]);
-    const csv = [header, ...rows].map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `transactions-${appliedFilters.dateFrom}-to-${appliedFilters.dateTo}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    transactionService.export('csv', appliedFilters)
+      .then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a   = document.createElement('a');
+        a.href     = url;
+        a.download = `transactions-${appliedFilters.dateFrom}-to-${appliedFilters.dateTo}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch(err => console.error('Failed to export CSV:', err));
   };
 
   const totalAmount = filtered.reduce((sum, tx) => sum + tx.amount, 0);

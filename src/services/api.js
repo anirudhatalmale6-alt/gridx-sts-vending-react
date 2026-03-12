@@ -1,281 +1,331 @@
 /**
  * GRIDx STS Vending System - API Service Layer
  *
- * PLACEHOLDER: Replace these mock implementations with actual API calls
- * when connecting to the backend server.
- *
- * Base URL should be configured via environment variable:
- * VITE_API_BASE_URL=https://api.gridx-vending.pulsar.com.na/v1
+ * Connected to Node.js backend at /api/v1
+ * Base URL configured via VITE_API_BASE_URL environment variable.
  */
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
-// Helper for API calls
+// ==================== HTTP Helper ====================
 async function apiCall(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
+  const token = localStorage.getItem('gridx_auth_token') || '';
+
   const config = {
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getAuthToken()}`,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...options.headers,
     },
     ...options,
   };
 
-  // TODO: Replace with actual fetch call when backend is ready
-  // const response = await fetch(url, config);
-  // if (!response.ok) throw new Error(`API Error: ${response.status}`);
-  // return response.json();
+  // Remove headers from spread to avoid duplication
+  delete config.headers;
+  const finalConfig = {
+    ...config,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  };
 
-  console.log(`[API] ${options.method || 'GET'} ${url}`, options.body || '');
-  return null;
+  const response = await fetch(url, finalConfig);
+
+  // Handle 401 - token expired
+  if (response.status === 401) {
+    // Try refresh
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      // Retry with new token
+      finalConfig.headers['Authorization'] = `Bearer ${localStorage.getItem('gridx_auth_token')}`;
+      const retryResponse = await fetch(url, finalConfig);
+      if (!retryResponse.ok) {
+        const err = await retryResponse.json().catch(() => ({ message: retryResponse.statusText }));
+        throw new Error(err.message || `API Error: ${retryResponse.status}`);
+      }
+      return retryResponse.json();
+    }
+    // Refresh failed - redirect to login
+    localStorage.removeItem('gridx_auth_token');
+    localStorage.removeItem('gridx_refresh_token');
+    localStorage.removeItem('gridx_user');
+    window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+
+  // Handle CSV/file downloads
+  const contentType = response.headers.get('content-type');
+  if (contentType && contentType.includes('text/csv')) {
+    const blob = await response.blob();
+    return { blob, filename: getFilenameFromResponse(response) };
+  }
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: response.statusText }));
+    throw new Error(err.message || `API Error: ${response.status}`);
+  }
+
+  return response.json();
 }
 
-function getAuthToken() {
-  return localStorage.getItem('gridx_auth_token') || '';
+async function tryRefreshToken() {
+  const refreshToken = localStorage.getItem('gridx_refresh_token');
+  if (!refreshToken) return false;
+
+  try {
+    const response = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!response.ok) return false;
+    const data = await response.json();
+    localStorage.setItem('gridx_auth_token', data.token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getFilenameFromResponse(response) {
+  const disposition = response.headers.get('content-disposition');
+  if (disposition && disposition.includes('filename=')) {
+    return disposition.split('filename=')[1].replace(/"/g, '');
+  }
+  return 'export.csv';
 }
 
 // ==================== AUTH ====================
 export const authService = {
-  /** POST /auth/login */
   async login(username, password) {
-    // TODO: return apiCall('/auth/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-    // Mock: always succeed
-    const token = 'mock-jwt-token-' + Date.now();
-    localStorage.setItem('gridx_auth_token', token);
-    return { token, user: { username, name: 'System Admin', role: 'ADMIN' } };
+    const data = await apiCall('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    localStorage.setItem('gridx_auth_token', data.token);
+    localStorage.setItem('gridx_refresh_token', data.refreshToken);
+    localStorage.setItem('gridx_user', JSON.stringify(data.user));
+    return data;
   },
 
-  /** POST /auth/logout */
   async logout() {
+    try {
+      await apiCall('/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore errors on logout
+    }
     localStorage.removeItem('gridx_auth_token');
+    localStorage.removeItem('gridx_refresh_token');
+    localStorage.removeItem('gridx_user');
     return { success: true };
+  },
+
+  async getProfile() {
+    return apiCall('/auth/me');
   },
 
   isAuthenticated() {
     return !!localStorage.getItem('gridx_auth_token');
-  }
+  },
 };
 
 // ==================== VENDING ====================
 export const vendingService = {
-  /** POST /vending/generate-token */
   async generateToken(meterNo, amount) {
-    // TODO: return apiCall('/vending/generate-token', { method: 'POST', body: JSON.stringify({ meterNo, amount }) });
-    // Mock: generate random 20-digit token
-    await new Promise(r => setTimeout(r, 2000)); // Simulate STS gateway latency
-    const token = Array.from({length: 20}, () => Math.floor(Math.random() * 10)).join('');
-    const formatted = token.match(/.{4}/g).join('-');
-    return {
-      success: true,
-      token: formatted,
-      reference: `TXN-${Date.now()}`,
-      kwh: (amount * 0.623).toFixed(1),
-      breakdown: { amountTendered: amount, vat: amount * 0.1304, fixedCharge: 8.50, relLevy: 2.40 }
-    };
+    return apiCall('/vending/generate-token', {
+      method: 'POST',
+      body: JSON.stringify({ meterNo, amount: Number(amount) }),
+    });
   },
 
-  /** POST /vending/reverse/{transactionId} */
   async reverseTransaction(transactionId, reason) {
-    // TODO: return apiCall(`/vending/reverse/${transactionId}`, { method: 'POST', body: JSON.stringify({ reason }) });
-    return { success: true, reversalRef: `REV-${Date.now()}` };
+    return apiCall(`/vending/reverse/${encodeURIComponent(transactionId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
   },
 
-  /** GET /vending/reprint/{transactionId} */
   async reprintToken(transactionId) {
-    // TODO: return apiCall(`/vending/reprint/${transactionId}`);
-    return { success: true };
-  }
+    return apiCall(`/vending/reprint/${encodeURIComponent(transactionId)}`);
+  },
 };
 
 // ==================== CUSTOMERS ====================
 export const customerService = {
-  /** GET /customers */
   async getAll(filters = {}) {
-    // TODO: return apiCall('/customers?' + new URLSearchParams(filters));
-    const { customers } = await import('../data/mockData');
-    return { data: customers, total: customers.length };
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/customers${params ? '?' + params : ''}`);
   },
 
-  /** GET /customers/{id} */
   async getById(id) {
-    // TODO: return apiCall(`/customers/${id}`);
-    const { customers } = await import('../data/mockData');
-    return customers.find(c => c.id === id || c.meterNo === id);
+    return apiCall(`/customers/${encodeURIComponent(id)}`);
   },
 
-  /** GET /customers/search?q={query} */
   async search(query) {
-    // TODO: return apiCall(`/customers/search?q=${encodeURIComponent(query)}`);
-    const { customers } = await import('../data/mockData');
-    const q = query.toLowerCase();
-    return customers.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.meterNo.includes(q) ||
-      c.id.toLowerCase().includes(q)
-    );
+    return apiCall(`/customers/search?q=${encodeURIComponent(query)}`);
   },
 
-  /** POST /customers */
   async create(data) {
-    // TODO: return apiCall('/customers', { method: 'POST', body: JSON.stringify(data) });
-    return { success: true, id: 'ACC-' + Date.now() };
+    return apiCall('/customers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
-  /** PUT /customers/{id} */
   async update(id, data) {
-    // TODO: return apiCall(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-    return { success: true };
-  }
+    return apiCall(`/customers/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
 };
 
 // ==================== TRANSACTIONS ====================
 export const transactionService = {
-  /** GET /transactions */
   async getAll(filters = {}) {
-    // TODO: return apiCall('/transactions?' + new URLSearchParams(filters));
-    const { recentTransactions } = await import('../data/mockData');
-    return { data: recentTransactions, total: recentTransactions.length };
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/transactions${params ? '?' + params : ''}`);
   },
 
-  /** GET /transactions/{id} */
   async getById(id) {
-    // TODO: return apiCall(`/transactions/${id}`);
-    const { recentTransactions } = await import('../data/mockData');
-    return recentTransactions.find(t => t.id === id);
+    return apiCall(`/transactions/${encodeURIComponent(id)}`);
   },
 
-  /** GET /transactions/export?format={csv|pdf} */
   async export(format, filters = {}) {
-    // TODO: return apiCall(`/transactions/export?format=${format}&` + new URLSearchParams(filters));
-    return { success: true, downloadUrl: '#' };
-  }
+    const params = new URLSearchParams({ format, ...filters }).toString();
+    const result = await apiCall(`/transactions/export?${params}`);
+    if (result.blob) {
+      // Trigger download
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = result.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      return { success: true };
+    }
+    return result;
+  },
 };
 
 // ==================== VENDORS ====================
 export const vendorService = {
-  /** GET /vendors */
   async getAll() {
-    // TODO: return apiCall('/vendors');
-    const { vendors } = await import('../data/mockData');
-    return { data: vendors };
+    return apiCall('/vendors');
   },
 
-  /** POST /vendors/{id}/batch/open */
+  async getById(id) {
+    return apiCall(`/vendors/${id}`);
+  },
+
+  async create(data) {
+    return apiCall('/vendors', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async update(id, data) {
+    return apiCall(`/vendors/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   async openBatch(vendorId) {
-    // TODO: return apiCall(`/vendors/${vendorId}/batch/open`, { method: 'POST' });
-    return { success: true, batchId: `BATCH-${Date.now()}` };
+    return apiCall(`/vendors/${vendorId}/batch/open`, { method: 'POST' });
   },
 
-  /** POST /vendors/{id}/batch/close */
   async closeBatch(vendorId) {
-    // TODO: return apiCall(`/vendors/${vendorId}/batch/close`, { method: 'POST' });
-    return { success: true };
-  }
+    return apiCall(`/vendors/${vendorId}/batch/close`, { method: 'POST' });
+  },
 };
 
 // ==================== TARIFFS ====================
 export const tariffService = {
-  /** GET /tariffs */
   async getAll() {
-    // TODO: return apiCall('/tariffs');
-    const { tariffGroups } = await import('../data/mockData');
-    return { data: tariffGroups };
+    return apiCall('/tariffs');
   },
 
-  /** PUT /tariffs/{id} */
   async update(id, data) {
-    // TODO: return apiCall(`/tariffs/${id}`, { method: 'PUT', body: JSON.stringify(data) });
-    return { success: true };
+    return apiCall(`/tariffs/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   },
 
-  /** GET /tariffs/config */
   async getConfig() {
-    // TODO: return apiCall('/tariffs/config');
-    const { systemConfig } = await import('../data/mockData');
-    return systemConfig;
-  }
+    return apiCall('/tariffs/config');
+  },
 };
 
 // ==================== REPORTS ====================
 export const reportService = {
-  /** GET /reports/{type} */
   async generate(type, filters = {}) {
-    // TODO: return apiCall(`/reports/${type}?` + new URLSearchParams(filters));
-    const { vendorReportData, dashboardKPIs } = await import('../data/mockData');
-    return { summary: dashboardKPIs, breakdown: vendorReportData };
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/reports/${type}${params ? '?' + params : ''}`);
   },
 
-  /** GET /reports/export?format={pdf|csv} */
   async export(type, format, filters = {}) {
-    // TODO: return apiCall(`/reports/${type}/export?format=${format}&` + new URLSearchParams(filters));
-    return { success: true, downloadUrl: '#' };
-  }
+    const params = new URLSearchParams({ format, ...filters }).toString();
+    const result = await apiCall(`/reports/${type}/export?${params}`);
+    if (result.blob) {
+      const url = URL.createObjectURL(result.blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = result.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      return { success: true };
+    }
+    return result;
+  },
 };
 
 // ==================== ADMIN ====================
 export const adminService = {
-  /** GET /admin/operators */
   async getOperators() {
-    // TODO: return apiCall('/admin/operators');
-    const { operators } = await import('../data/mockData');
-    return { data: operators };
+    return apiCall('/admin/operators');
   },
 
-  /** POST /admin/operators */
   async createOperator(data) {
-    // TODO: return apiCall('/admin/operators', { method: 'POST', body: JSON.stringify(data) });
-    return { success: true };
+    return apiCall('/admin/operators', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
   },
 
-  /** GET /admin/audit-log */
+  async updateOperator(id, data) {
+    return apiCall(`/admin/operators/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   async getAuditLog(filters = {}) {
-    // TODO: return apiCall('/admin/audit-log?' + new URLSearchParams(filters));
-    const { auditLog } = await import('../data/mockData');
-    return { data: auditLog };
+    const params = new URLSearchParams(filters).toString();
+    return apiCall(`/admin/audit-log${params ? '?' + params : ''}`);
   },
 
-  /** GET /admin/system-status */
   async getSystemStatus() {
-    // TODO: return apiCall('/admin/system-status');
-    return {
-      appServer: 'Online',
-      stsGateway: 'Connected',
-      database: 'Healthy',
-      smsGateway: 'Active',
-      lastBackup: '2026-03-12 04:00:00',
-      uptime: '99.97%'
-    };
-  }
+    return apiCall('/admin/system-status');
+  },
 };
 
 // ==================== DASHBOARD ====================
 export const dashboardService = {
-  /** GET /dashboard/kpis */
   async getKPIs() {
-    // TODO: return apiCall('/dashboard/kpis');
-    const { dashboardKPIs } = await import('../data/mockData');
-    return dashboardKPIs;
+    return apiCall('/dashboard/kpis');
   },
 
-  /** GET /dashboard/recent-transactions */
   async getRecentTransactions(limit = 10) {
-    // TODO: return apiCall(`/dashboard/recent-transactions?limit=${limit}`);
-    const { recentTransactions } = await import('../data/mockData');
-    return recentTransactions.slice(0, limit);
+    return apiCall(`/dashboard/recent-transactions?limit=${limit}`);
   },
 
-  /** GET /dashboard/sales-trend */
   async getSalesTrend() {
-    // TODO: return apiCall('/dashboard/sales-trend');
-    return [
-      { day: 'Thu', amount: 14200 },
-      { day: 'Fri', amount: 16800 },
-      { day: 'Sat', amount: 9400 },
-      { day: 'Sun', amount: 7200 },
-      { day: 'Mon', amount: 15600 },
-      { day: 'Tue', amount: 17400 },
-      { day: 'Today', amount: 18742 }
-    ];
-  }
+    return apiCall('/dashboard/sales-trend');
+  },
 };

@@ -1,5 +1,6 @@
+import { useState, useEffect } from 'react';
 import { Settings, Shield, Users, Plus, Edit, Activity } from 'lucide-react';
-import { operators, auditLog } from '../data/mockData';
+import { adminService } from '../services/api';
 
 const roleBadge = (role) => {
   const map = {
@@ -48,6 +49,24 @@ const auditTypeStyles = {
 };
 
 export default function Admin() {
+  const [operators, setOperators] = useState([]);
+  const [auditLog, setAuditLog] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      adminService.getOperators(),
+      adminService.getAuditLog(),
+    ])
+      .then(([operatorsRes, auditRes]) => {
+        setOperators(operatorsRes.data);
+        setAuditLog(auditRes.data);
+      })
+      .catch(err => console.error('Failed to load admin data:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
     <div className="page-admin">
       {/* Page Header */}

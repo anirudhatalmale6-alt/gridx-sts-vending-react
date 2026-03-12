@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { customers } from '../data/mockData';
+import { customerService } from '../services/api';
 import { Search, Users, Zap, Edit, Clock, MessageSquare, Ban } from 'lucide-react';
 
 const AREAS = ['All', 'Grunau', 'Noordoewer', 'Groot Aub', 'Dordabis', 'Seeis', 'Stampriet'];
@@ -21,10 +21,46 @@ export default function Customers() {
   const [areaFilter, setAreaFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [allCustomers, setAllCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    customerService.getAll()
+      .then(({ data }) => {
+        setAllCustomers(data);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to load customers:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  // When search query changes, call API search for queries >= 2 chars
+  useEffect(() => {
+    if (search.length >= 2) {
+      customerService.search(search)
+        .then(({ data }) => {
+          setAllCustomers(data);
+        })
+        .catch(err => {
+          console.error('Customer search failed:', err);
+        });
+    } else if (search.length === 0) {
+      // Reset to full list when search is cleared
+      customerService.getAll()
+        .then(({ data }) => {
+          setAllCustomers(data);
+        })
+        .catch(err => {
+          console.error('Failed to reload customers:', err);
+        });
+    }
+  }, [search]);
 
   const filtered = useMemo(() => {
-    return customers.filter(c => {
-      const matchSearch = !search ||
+    return allCustomers.filter(c => {
+      const matchSearch = !search || search.length >= 2 ||
         c.name.toLowerCase().includes(search.toLowerCase()) ||
         c.meterNo.includes(search) ||
         c.id.toLowerCase().includes(search.toLowerCase());
@@ -32,9 +68,9 @@ export default function Customers() {
       const matchStatus = statusFilter  === 'All' || c.status === statusFilter;
       return matchSearch && matchArea && matchStatus;
     });
-  }, [search, areaFilter, statusFilter]);
+  }, [search, areaFilter, statusFilter, allCustomers]);
 
-  const totalArrears = customers.reduce((sum, c) => sum + c.arrears, 0);
+  const totalArrears = allCustomers.reduce((sum, c) => sum + c.arrears, 0);
 
   const handleVend = (customer, e) => {
     e.stopPropagation();

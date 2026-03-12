@@ -1,5 +1,6 @@
+import { useState, useEffect, useMemo } from 'react';
 import { Store, Phone, User, DollarSign, TrendingUp } from 'lucide-react';
-import { vendors } from '../data/mockData';
+import { vendorService } from '../services/api';
 
 const fmt = (n) => 'N$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -13,24 +14,35 @@ const statusBadge = (status) => {
   return <span className={`badge ${cfg.cls}`}>{cfg.label}</span>;
 };
 
-const commissionData = vendors.map((v) => ({
-  name: v.name,
-  rate: v.commissionRate,
-  gross: v.totalSales,
-  commission: v.totalSales * (v.commissionRate / 100),
-  net: v.totalSales - v.totalSales * (v.commissionRate / 100),
-}));
-
-const totals = commissionData.reduce(
-  (acc, r) => ({
-    gross: acc.gross + r.gross,
-    commission: acc.commission + r.commission,
-    net: acc.net + r.net,
-  }),
-  { gross: 0, commission: 0, net: 0 }
-);
-
 export default function Vendors() {
+  const [vendors, setVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    vendorService.getAll()
+      .then(res => setVendors(res.data))
+      .catch(err => console.error('Failed to load vendors:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const commissionData = useMemo(() => vendors.map((v) => ({
+    name: v.name,
+    rate: v.commissionRate,
+    gross: v.totalSales,
+    commission: v.totalSales * (v.commissionRate / 100),
+    net: v.totalSales - v.totalSales * (v.commissionRate / 100),
+  })), [vendors]);
+
+  const totals = useMemo(() => commissionData.reduce(
+    (acc, r) => ({
+      gross: acc.gross + r.gross,
+      commission: acc.commission + r.commission,
+      net: acc.net + r.net,
+    }),
+    { gross: 0, commission: 0, net: 0 }
+  ), [commissionData]);
+
   return (
     <div className="page-vendors">
       {/* Page Header */}

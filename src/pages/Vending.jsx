@@ -1,6 +1,5 @@
-import { useState, useCallback } from 'react';
-import { vendingService } from '../services/api';
-import { customers, systemConfig, tariffGroups } from '../data/mockData';
+import { useState, useCallback, useEffect } from 'react';
+import { vendingService, customerService, tariffService } from '../services/api';
 import { Zap, Search, Printer, Copy, Smartphone, RefreshCw, Loader } from 'lucide-react';
 
 // Sample quick-load presets
@@ -61,25 +60,55 @@ export default function Vending() {
   const [isGenerating, setIsGenerating]       = useState(false);
   const [txnRef, setTxnRef]                   = useState('');
   const [copied, setCopied]                   = useState(false);
+  const [sysConfig, setSysConfig]             = useState({ vatRate: 15, fixedCharge: 8.50, relLevy: 2.40, minPurchase: 10 });
+  const [allTariffs, setAllTariffs]           = useState([]);
+
+  // ── Load system config & tariffs on mount ──────────────────────────────────
+  useEffect(() => {
+    tariffService.getConfig()
+      .then(res => {
+        if (res.data) {
+          const d = res.data;
+          setSysConfig({
+            vatRate:      d.vatRate      ?? 15,
+            fixedCharge:  d.fixedCharge  ?? 8.50,
+            relLevy:      d.relLevy      ?? 2.40,
+            minPurchase:  d.minPurchase  ?? 10,
+          });
+        }
+      })
+      .catch(err => console.error('Failed to load system config:', err));
+
+    tariffService.getAll()
+      .then(res => {
+        if (res.data) setAllTariffs(res.data);
+      })
+      .catch(err => console.error('Failed to load tariffs:', err));
+  }, []);
 
   // ── Search ──────────────────────────────────────────────────────────────────
-  const handleSearch = useCallback((query) => {
+  const handleSearch = useCallback(async (query) => {
     const q = (query || searchQuery).trim().toLowerCase();
-    if (!q) return;
+    if (!q || q.length < 2) return;
 
-    const found = customers.find(
-      c => c.meterNo === q || c.id.toLowerCase() === q || c.name.toLowerCase() === q
-    );
+    try {
+      const res = await customerService.search(q);
+      const found = res.data && res.data.length > 0 ? res.data[0] : null;
 
-    if (found) {
-      setSelectedCustomer(found);
-      setSearchError('');
-      setAmount('');
-      setGeneratedToken(null);
-      setTxnRef(generateTxnRef());
-    } else {
+      if (found) {
+        setSelectedCustomer(found);
+        setSearchError('');
+        setAmount('');
+        setGeneratedToken(null);
+        setTxnRef(generateTxnRef());
+      } else {
+        setSelectedCustomer(null);
+        setSearchError(`No customer found for "${q}"`);
+      }
+    } catch (err) {
+      console.error('Customer search failed:', err);
       setSelectedCustomer(null);
-      setSearchError(`No customer found for "${q}"`);
+      setSearchError('Search failed. Please try again.');
     }
   }, [searchQuery]);
 
@@ -92,11 +121,11 @@ export default function Vending() {
   const calculateBreakdown = useCallback((amt) => {
     if (!amt || !selectedCustomer) return null;
     const amountNum = parseFloat(amt);
-    if (isNaN(amountNum) || amountNum < systemConfig.minPurchase) return null;
+    if (isNaN(amountNum) || amountNum < sysConfig.minPurchase) return null;
 
-    const vat            = amountNum * (systemConfig.vatRate / (100 + systemConfig.vatRate));
-    const fixedCharge    = systemConfig.fixedCharge;
-    const relLevy        = systemConfig.relLevy;
+    const vat            = amountNum * (sysConfig.vatRate / (100 + sysConfig.vatRate));
+    const fixedCharge    = sysConfig.fixedCharge;
+    const relLevy        = sysConfig.relLevy;
     let   arrearsDeduction = 0;
 
     if (selectedCustomer.arrears > 0) {
@@ -104,7 +133,7 @@ export default function Vending() {
     }
 
     const netEnergy = amountNum - vat - fixedCharge - relLevy - arrearsDeduction;
-    const tariff    = tariffGroups.find(t => t.id === selectedCustomer.tariffGroup);
+    const tariff    = allTariffs.find(t => t.id === selectedCustomer.tariffGroup);
     const kwh       = netEnergy > 0 ? calcKwh(netEnergy, tariff) : 0;
 
     return {
@@ -122,7 +151,7 @@ export default function Vending() {
   const handleGenerate = async () => {
     if (!selectedCustomer || !amount) return;
     const amountNum = parseFloat(amount);
-    if (isNaN(amountNum) || amountNum < systemConfig.minPurchase) return;
+    if (isNaN(amountNum) || amountNum < sysConfig.minPurchase) return;
 
     setIsGenerating(true);
     setGeneratedToken(null);
@@ -156,7 +185,7 @@ export default function Vending() {
 
   const breakdown = calculateBreakdown(amount);
   const tariff    = selectedCustomer
-    ? tariffGroups.find(t => t.id === selectedCustomer.tariffGroup)
+    ? allTariffs.find(t => t.id === selectedCustomer.tariffGroup)
     : null;
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -357,9 +386,9 @@ export default function Vending() {
                   <input
                     type="number"
                     className="form-input"
-                    placeholder={`Min N$${systemConfig.minPurchase.toFixed(2)}`}
+                    placeholder={`Min N$${sysConfig.minPurchase.toFixed(2)}`}
                     value={amount}
-                    min={systemConfig.minPurchase}
+                    min={sysConfig.minPurchase}
                     step="0.01"
                     onChange={e => { setAmount(e.target.value); setGeneratedToken(null); }}
                     disabled={isGenerating}
@@ -429,7 +458,7 @@ export default function Vending() {
                 <button
                   className="btn-generate"
                   onClick={handleGenerate}
-                  disabled={isGenerating || !amount || parseFloat(amount) < systemConfig.minPurchase || !!generatedToken}
+                  disabled={isGenerating || !amount || parseFloat(amount) < sysConfig.minPurchase || !!generatedToken}
                 >
                   {isGenerating ? (
                     <><Loader size={16} className="spinner dark" style={{ animation: 'spin 1s linear infinite' }} /> Generating…</>

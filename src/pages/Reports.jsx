@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { BarChart3, Download, FileText, TrendingUp } from 'lucide-react';
-import { vendorReportData, dashboardKPIs } from '../data/mockData';
+import { reportService } from '../services/api';
 
 const fmt = (n) => 'N$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -13,33 +13,47 @@ const reportTypes = [
   { id: 'audit', label: '🔒 System Audit' },
 ];
 
-const summaryTiles = [
-  { label: 'Total Transactions', value: '247', sub: dashboardKPIs.tokensGenerated + ' tokens generated', accent: 'var(--accent)' },
-  { label: 'Total Sales Revenue', value: fmt(dashboardKPIs.todaySales), sub: '↑ 12.4% vs yesterday', accent: 'var(--success)' },
-  { label: 'Energy Dispensed', value: '11,842 kWh', sub: 'Avg 47.9 kWh per txn', accent: '#8b5cf6' },
-  { label: 'Arrears Collected', value: 'N$1,248', sub: 'From 14 accounts', accent: 'var(--warning)' },
-  { label: 'VAT Collected', value: 'N$2,441', sub: '@ 15%', accent: 'var(--info)' },
-  { label: 'Failed Transactions', value: '3', sub: '1.2% failure rate', accent: 'var(--danger)' },
-];
-
-const totals = vendorReportData.reduce(
-  (acc, r) => ({
-    transactions: acc.transactions + r.transactions,
-    grossSales: acc.grossSales + r.grossSales,
-    arrears: acc.arrears + r.arrears,
-    vat: acc.vat + r.vat,
-    commission: acc.commission + r.commission,
-    netRevenue: acc.netRevenue + r.netRevenue,
-    kwh: acc.kwh + r.kwh,
-  }),
-  { transactions: 0, grossSales: 0, arrears: 0, vat: 0, commission: 0, netRevenue: 0, kwh: 0 }
-);
-
 export default function Reports() {
+  const [reportData, setReportData] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState('daily');
   const [dateFrom, setDateFrom] = useState('2026-03-12');
   const [dateTo, setDateTo] = useState('2026-03-12');
   const [vendor, setVendor] = useState('all');
+
+  useEffect(() => {
+    setLoading(true);
+    reportService.generate('vendor')
+      .then(res => {
+        setReportData(res.breakdown);
+        setSummary(res.summary);
+      })
+      .catch(err => console.error('Failed to load report data:', err))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const summaryTiles = useMemo(() => [
+    { label: 'Total Transactions', value: '247', sub: (summary.tokensGenerated || 0) + ' tokens generated', accent: 'var(--accent)' },
+    { label: 'Total Sales Revenue', value: fmt(summary.todaySales || 0), sub: '↑ 12.4% vs yesterday', accent: 'var(--success)' },
+    { label: 'Energy Dispensed', value: '11,842 kWh', sub: 'Avg 47.9 kWh per txn', accent: '#8b5cf6' },
+    { label: 'Arrears Collected', value: 'N$1,248', sub: 'From 14 accounts', accent: 'var(--warning)' },
+    { label: 'VAT Collected', value: 'N$2,441', sub: '@ 15%', accent: 'var(--info)' },
+    { label: 'Failed Transactions', value: '3', sub: '1.2% failure rate', accent: 'var(--danger)' },
+  ], [summary]);
+
+  const totals = useMemo(() => reportData.reduce(
+    (acc, r) => ({
+      transactions: acc.transactions + r.transactions,
+      grossSales: acc.grossSales + r.grossSales,
+      arrears: acc.arrears + r.arrears,
+      vat: acc.vat + r.vat,
+      commission: acc.commission + r.commission,
+      netRevenue: acc.netRevenue + r.netRevenue,
+      kwh: acc.kwh + r.kwh,
+    }),
+    { transactions: 0, grossSales: 0, arrears: 0, vat: 0, commission: 0, netRevenue: 0, kwh: 0 }
+  ), [reportData]);
 
   return (
     <div className="page-reports">
@@ -141,7 +155,7 @@ export default function Reports() {
               </tr>
             </thead>
             <tbody>
-              {vendorReportData.map((row, i) => (
+              {reportData.map((row, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 14px', fontWeight: 500 }}>{row.vendor}</td>
                   <td className="mono" style={{ padding: '10px 14px', textAlign: 'right' }}>{row.transactions}</td>
