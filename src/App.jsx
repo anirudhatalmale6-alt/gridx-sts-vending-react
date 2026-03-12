@@ -13,6 +13,7 @@ import Admin from './pages/Admin';
 import Engineering from './pages/Engineering';
 import Batches from './pages/Batches';
 import Map from './pages/Map';
+import MeterMonitor from './pages/MeterMonitor';
 
 function App() {
   const { isAuthenticated } = useAuth();
@@ -35,6 +36,7 @@ function App() {
         <Route path="/engineering" element={<Engineering />} />
         <Route path="/batches" element={<Batches />} />
         <Route path="/map" element={<Map />} />
+        <Route path="/meter-monitor" element={<MeterMonitor />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Layout>

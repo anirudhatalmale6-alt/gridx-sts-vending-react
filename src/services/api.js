@@ -430,6 +430,28 @@ export const notificationService = {
   },
 };
 
+// ==================== METER MONITOR (ESP32 Direct Communication) ====================
+export const meterMonitorService = {
+  async listMeters() {
+    return apiCall('/meter/list');
+  },
+  async getMeterDetail(drn) {
+    return apiCall(`/meter/${drn}`);
+  },
+  async sendCommand(drn, command) {
+    return apiCall(`/meter/${drn}/command`, { method: 'POST', body: JSON.stringify({ command }) });
+  },
+  async sendToken(drn, token, transactionId) {
+    return apiCall(`/meter/${drn}/send-token`, {
+      method: 'POST',
+      body: JSON.stringify({ token, transaction_id: transactionId }),
+    });
+  },
+  async getTokenQueue() {
+    return apiCall('/meter/token-queue');
+  },
+};
+
 // ==================== RECEIPTS ====================
 export const receiptService = {
   async viewReceipt(transactionRef) {

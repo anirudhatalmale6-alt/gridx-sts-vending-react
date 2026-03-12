@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import {
   LayoutDashboard, Zap, Users, Receipt, Store,
   Gauge, BarChart3, Settings, LogOut,
-  Wrench, Package, MapPin,
+  Wrench, Package, MapPin, Radio,
 } from 'lucide-react';
 
 const navItems = [
@@ -29,6 +29,7 @@ const navItems = [
       { path: '/engineering', label: 'Engineering', icon: Wrench },
       { path: '/batches', label: 'Batches', icon: Package },
       { path: '/map', label: 'Meter Map', icon: MapPin },
+      { path: '/meter-monitor', label: 'Meter Monitor', icon: Radio },
     ],
   },
   {
